@@ -8,26 +8,33 @@
 Adafruit_BLE_UART BTLEserial = Adafruit_BLE_UART(ADAFRUITBLE_REQ, ADAFRUITBLE_RDY, ADAFRUITBLE_RST);
 
 const int numReadings = 50;
-const int initialValue = 25;
 
+const int temp_sensor_pin = A0;
+const int moisture_sensor_pin = A2;
+
+
+const float temp_initial_value = 25;
 const float R1 = 10000;
 const float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
-int Vo;
-float logR2, R2, T, Tc, Tf;
+float Vo, logR2, R2, T, Tc, Tf;
+float temp_values[numReadings];
+float temp_total = temp_initial_value * numReadings;
+int temp_current_index = 0;
 
-int readings[numReadings];
-int readIndex = 0;
-int total = initialValue * numReadings;
+const float moisture_initial_value = 0;
+float moustire_sensor_output_value;
+float moisture_values[numReadings];
+float moisture_total = moisture_initial_value * numReadings;
+int moisture_current_index = 0;
 
-const int sensorPin = A0;
 
 void setup() {
   Serial.begin(9600);
-
   pinMode(LED_BUILTIN, OUTPUT);
 
   for (int thisReading = 0; thisReading < numReadings; thisReading++) {
-    readings[thisReading] = initialValue;
+    temp_values[thisReading] = temp_initial_value;
+    moisture_values[thisReading] = moisture_initial_value;
   }
   
   BTLEserial.setDeviceName("BLETemp");
@@ -38,71 +45,83 @@ aci_evt_opcode_t laststatus = ACI_EVT_DISCONNECTED;
 
 void loop() {
   BTLEserial.pollACI();
-
   aci_evt_opcode_t status = BTLEserial.getState();
+  
   if (status != laststatus) {
     laststatus = status;
   }
 
   if (status == ACI_EVT_CONNECTED) {
-    String temperatureString = averageTemperature();
-    
     uint8_t sendbuffer[30];
-    String finalString = "Temp: " + temperatureString;
-    finalString.getBytes(sendbuffer, 30);
-    char sendbuffersize = min(30, finalString.length());
-
-    Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
-
-//   if (BTLEserial.available()) {
-//      Serial.print("* "); Serial.print(BTLEserial.available()); Serial.println(F(" bytes available from BTLE"));
-//    }
-//    // OK while we still have something to read, get a character and print it out
-//    while (BTLEserial.available()) {
-//      char c = BTLEserial.read();
-//      Serial.print(c);
-//    }
-
-    BTLEserial.write(sendbuffer, sendbuffersize);
+    String temperatureString = averageTemperature();
+//    String moistureString = averageMoisture();
     
-//    Serial.println(BTLEserial.read());
+    temperatureString.getBytes(sendbuffer, 30);
+    char sendbuffersize = min(30, temperatureString.length());
+    Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
+    BTLEserial.write(sendbuffer, sendbuffersize);
+//
+//    moistureString.getBytes(sendbuffer, 30);
+//    sendbuffersize = min(30, moistureString.length());
+//    Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
+//    BTLEserial.write(sendbuffer, sendbuffersize);
+    
   } else if (status == ACI_EVT_DISCONNECTED) {
-//    Serial.println("NOT CONNECTED");
+    Serial.println("Not Connected");
   }
-
-
-//  Serial.println(BTLEserial.read());
 }
 
 String averageTemperature() {
-  int average = averageValue(sensorPin);
-  return String(average);
-}
-
-int averageValue(int inputPin) {
-  total = total - readings[readIndex];
+  temp_total = temp_total - temp_values[temp_current_index];
   
-  Vo = analogRead(inputPin);
+  Vo = analogRead(temp_sensor_pin);
   R2 = R1 * (1023.0 / (float)Vo - 1.0);
   logR2 = log(R2);
   T = (1.0 / (c1 + c2*logR2 + c3*logR2*logR2*logR2));
   Tc = T - 273.15;
   
-  readings[readIndex] = Tc;
-  Serial.print("Current Temp: "); Serial.println(readings[readIndex]);
-  total = total + readings[readIndex];
-  readIndex = readIndex + 1;
+//  temp_values[temp_current_index] = Tc;
+//  temp_total = temp_total + temp_values[temp_current_index];
+//  temp_current_index = temp_current_index + 1;
+//
+//  if (temp_current_index >= numReadings) {
+//    temp_current_index = 0;
+//  }
+//  
+//  float average = temp_total / numReadings;
+  float average = averageValue(Tc, &temp_total, temp_values, &temp_current_index);
+  
+  return "Temp: " + String(average);
+}
 
-  if (readIndex >= numReadings) {
-    readIndex = 0;
+String averageMoisture() {
+  moisture_total = moisture_total - moisture_values[moisture_current_index];
+  
+  moustire_sensor_output_value = analogRead(moisture_sensor_pin);
+  
+//  moisture_values[moisture_current_index] = moustire_sensor_output_value;
+//  moisture_total = moisture_total + moisture_values[moisture_current_index];
+//  moisture_current_index = moisture_current_index + 1;
+//
+//  if (moisture_current_index >= numReadings) {
+//    moisture_current_index = 0;
+//  }
+//  
+//  float average = moisture_total / numReadings;
+  float average = averageValue(moustire_sensor_output_value, &moisture_total, moisture_values, &moisture_current_index);
+
+  return "Moisture: " + String(average);
+}
+
+float averageValue(float current_value, float *total_value, float *all_values, int *current_index) {
+  all_values[*current_index] = current_value;
+  *total_value = *total_value + all_values[*current_index];
+  *current_index = *current_index + 1;
+
+  if (*current_index >= numReadings) {
+    *current_index = 0;
   }
   
-  return total / numReadings;
+  float average = *total_value / numReadings;
+  return average;
 }
-//
-//String temperature(int sensorVal) {
-////  float voltage = (sensorVal / 1024.0) * 5.0;
-////  float temperature = (voltage - .5) * 100;
-//  Serial.println(sensorVal);
-//  return String(sensorVal);
-//}

@@ -12,21 +12,20 @@ const int numReadings = 50;
 const int temp_sensor_pin = A0;
 const int moisture_sensor_pin = A2;
 
-
+//Temp variables
 const float temp_initial_value = 25;
-const float R1 = 10000;
-const float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
+const float R1 = 10000, c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
 float Vo, logR2, R2, T, Tc, Tf;
 float temp_values[numReadings];
 float temp_total = temp_initial_value * numReadings;
 int temp_current_index = 0;
 
+//Moisture variables
 const float moisture_initial_value = 0;
 float moustire_sensor_output_value;
 float moisture_values[numReadings];
 float moisture_total = moisture_initial_value * numReadings;
 int moisture_current_index = 0;
-
 
 void setup() {
   Serial.begin(9600);
@@ -46,19 +45,27 @@ aci_evt_opcode_t laststatus = ACI_EVT_DISCONNECTED;
 void loop() {
   BTLEserial.pollACI();
   aci_evt_opcode_t status = BTLEserial.getState();
-  
+  String temperatureString = averageTemperature();
+//  String moistureString = averageMoisture();
+
   if (status != laststatus) {
     laststatus = status;
   }
 
   if (status == ACI_EVT_CONNECTED) {
+    if (BTLEserial.available()) {
+      while (BTLEserial.available()) {
+        char c = BTLEserial.read();
+        Serial.print(c);
+      }
+      Serial.println(); 
+    }
+    
     uint8_t sendbuffer[30];
-    String temperatureString = averageTemperature();
-//    String moistureString = averageMoisture();
     
     temperatureString.getBytes(sendbuffer, 30);
     char sendbuffersize = min(30, temperatureString.length());
-    Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
+//    Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
     BTLEserial.write(sendbuffer, sendbuffersize);
 //
 //    moistureString.getBytes(sendbuffer, 30);
@@ -79,37 +86,16 @@ String averageTemperature() {
   logR2 = log(R2);
   T = (1.0 / (c1 + c2*logR2 + c3*logR2*logR2*logR2));
   Tc = T - 273.15;
-  
-//  temp_values[temp_current_index] = Tc;
-//  temp_total = temp_total + temp_values[temp_current_index];
-//  temp_current_index = temp_current_index + 1;
-//
-//  if (temp_current_index >= numReadings) {
-//    temp_current_index = 0;
-//  }
-//  
-//  float average = temp_total / numReadings;
+
   float average = averageValue(Tc, &temp_total, temp_values, &temp_current_index);
-  
   return "Temp: " + String(average);
 }
 
 String averageMoisture() {
-  moisture_total = moisture_total - moisture_values[moisture_current_index];
-  
+  moisture_total = moisture_total - moisture_values[moisture_current_index];  
   moustire_sensor_output_value = analogRead(moisture_sensor_pin);
-  
-//  moisture_values[moisture_current_index] = moustire_sensor_output_value;
-//  moisture_total = moisture_total + moisture_values[moisture_current_index];
-//  moisture_current_index = moisture_current_index + 1;
-//
-//  if (moisture_current_index >= numReadings) {
-//    moisture_current_index = 0;
-//  }
-//  
-//  float average = moisture_total / numReadings;
-  float average = averageValue(moustire_sensor_output_value, &moisture_total, moisture_values, &moisture_current_index);
 
+  float average = averageValue(moustire_sensor_output_value, &moisture_total, moisture_values, &moisture_current_index);
   return "Moisture: " + String(average);
 }
 
